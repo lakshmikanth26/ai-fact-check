@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Fact-Check Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'chat-bg': '#f8fafc',
+                        'user-bubble': '#3b82f6',
+                        'bot-bubble': '#f1f5f9',
+                        'bot-text': '#334155'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto max-w-4xl h-screen flex flex-col">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b p-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                        <span class="text-white font-bold text-lg">🔍</span>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-900">AI Fact-Check Chatbot</h1>
+                        <p class="text-sm text-gray-500">Verify claims with Wikipedia and AI</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <div class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                    <span class="text-sm text-gray-600">Online</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Chat Messages Container -->
+        <div class="flex-1 overflow-hidden flex flex-col">
+            <div id="chat-messages" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <!-- Welcome Message -->
+                <div class="flex items-start space-x-3">
+                    <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span class="text-white text-sm">🤖</span>
+                    </div>
+                    <div class="bg-bot-bubble rounded-lg p-4 max-w-md shadow-sm">
+                        <div class="text-bot-text">
+                            <p class="font-medium mb-2">Welcome to the AI Fact-Check Chatbot! 👋</p>
+                            <p class="text-sm">I can help you verify claims using Wikipedia and AI analysis. Just type a statement you'd like me to fact-check!</p>
+                            <div class="mt-3 text-xs text-gray-500">
+                                <p><strong>Classifications:</strong></p>
+                                <p>✅ True • ❌ False • ⚠️ Misleading • ❓ Unverifiable</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="border-t bg-white p-4">
+                <form id="chat-form" class="flex space-x-3">
+                    <div class="flex-1 relative">
+                        <input 
+                            type="text" 
+                            id="message-input" 
+                            placeholder="Enter a claim to fact-check..."
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                            maxlength="500"
+                            required
+                        >
+                        <div class="absolute right-3 top-3 text-xs text-gray-400">
+                            <span id="char-count">0</span>/500
+                        </div>
+                    </div>
+                    <button 
+                        type="submit" 
+                        id="send-button"
+                        class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200 font-medium"
+                    >
+                        Send
+                    </button>
+                </form>
+                <div class="mt-2 text-xs text-gray-500 text-center">
+                    Powered by Wikipedia API and HuggingFace AI
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+            <span class="text-gray-700">Fact-checking your claim...</span>
+        </div>
+    </div>
+
+    <script>
+        class FactCheckChatbot {
+            constructor() {
+                this.chatMessages = document.getElementById('chat-messages');
+                this.messageInput = document.getElementById('message-input');
+                this.sendButton = document.getElementById('send-button');
+                this.chatForm = document.getElementById('chat-form');
+                this.loadingOverlay = document.getElementById('loading-overlay');
+                this.charCount = document.getElementById('char-count');
+                
+                this.initializeEventListeners();
+            }
+
+            initializeEventListeners() {
+                this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
+                this.messageInput.addEventListener('input', () => this.updateCharCount());
+                this.messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        this.handleSubmit(e);
+                    }
+                });
+            }
+
+            updateCharCount() {
+                const count = this.messageInput.value.length;
+                this.charCount.textContent = count;
+                this.charCount.className = count > 450 ? 'text-red-500' : 'text-gray-400';
+            }
+
+            async handleSubmit(e) {
+                e.preventDefault();
+                
+                const message = this.messageInput.value.trim();
+                if (!message) return;
+
+                // Add user message to chat
+                this.addMessage(message, 'user');
+                
+                // Clear input and disable form
+                this.messageInput.value = '';
+                this.updateCharCount();
+                this.setLoading(true);
+
+                try {
+                    const response = await fetch('/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ message: message })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        this.addMessage(data.message, 'bot', data);
+                    } else {
+                        this.addMessage(`❌ Error: ${data.error || 'Something went wrong'}`, 'bot');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    this.addMessage('❌ Network error. Please check your connection and try again.', 'bot');
+                } finally {
+                    this.setLoading(false);
+                }
+            }
+
+            addMessage(content, sender, metadata = null) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'flex items-start space-x-3';
+
+                if (sender === 'user') {
+                    messageDiv.className += ' flex-row-reverse space-x-reverse';
+                    messageDiv.innerHTML = `
+                        <div class="w-8 h-8 bg-user-bubble rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm">👤</span>
+                        </div>
+                        <div class="bg-user-bubble text-white rounded-lg p-4 max-w-md shadow-sm">
+                            <p>${this.escapeHtml(content)}</p>
+                        </div>
+                    `;
+            } else {
+                const confidenceBar = metadata?.confidence ? this.createConfidenceBar(metadata.confidence) : '';
+                
+                messageDiv.innerHTML = `
+                        <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span class="text-white text-sm">🤖</span>
+                        </div>
+                        <div class="bg-bot-bubble rounded-lg p-4 max-w-md shadow-sm">
+                            <div class="text-bot-text">
+                                ${this.formatMarkdown(content)}
+                                ${confidenceBar}
+                                ${this.createSourcesList(metadata?.sources)}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                this.chatMessages.appendChild(messageDiv);
+                this.scrollToBottom();
+            }
+
+            getClassificationColor(classification) {
+                const colors = {
+                    'True': 'text-green-600',
+                    'False': 'text-red-600',
+                    'Misleading': 'text-yellow-600',
+                    'Unverifiable': 'text-gray-600'
+                };
+                return colors[classification] || 'text-gray-600';
+            }
+
+            createConfidenceBar(confidence) {
+                const percentage = Math.round(confidence * 100);
+                let color;
+                if (confidence > 0.7) {
+                    color = 'bg-green-500';
+                } else if (confidence > 0.4) {
+                    color = 'bg-yellow-500';
+                } else {
+                    color = 'bg-red-500';
+                }
+                
+                return `
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                        <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                            <span>Confidence</span>
+                            <span>${percentage}%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="${color} h-2 rounded-full transition-all duration-300" style="width: ${percentage}%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            createSourcesList(sources) {
+                if (!sources || sources.length === 0) return '';
+                
+                return `
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                        <p class="text-xs font-medium text-gray-600 mb-2">Sources:</p>
+                        <div class="space-y-1">
+                            ${sources.slice(0, 3).map(source => `
+                                <a href="${source.url}" target="_blank" class="block text-xs text-blue-600 hover:text-blue-800 hover:underline">
+                                    📄 ${this.escapeHtml(source.title)}
+                                </a>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            formatMarkdown(text) {
+                return text
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" class="text-blue-600 hover:underline">$1</a>')
+                    .replace(/\n/g, '<br>');
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            setLoading(loading) {
+                if (loading) {
+                    this.loadingOverlay.classList.remove('hidden');
+                    this.sendButton.disabled = true;
+                    this.messageInput.disabled = true;
+                    this.sendButton.textContent = 'Checking...';
+                } else {
+                    this.loadingOverlay.classList.add('hidden');
+                    this.sendButton.disabled = false;
+                    this.messageInput.disabled = false;
+                    this.sendButton.textContent = 'Send';
+                    this.messageInput.focus();
+                }
+            }
+
+            scrollToBottom() {
+                this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+            }
+        }
+
+        // Initialize the chatbot when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const chatbot = new FactCheckChatbot();
+            // Chatbot is now initialized and ready
+        });
+    </script>
+</body>
+</html>
