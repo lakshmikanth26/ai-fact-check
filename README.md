@@ -54,7 +54,7 @@ The `run.py` script will automatically:
 - ✅ Check Python version compatibility
 - 📦 Create a virtual environment if needed
 - 📥 Install dependencies if not already installed
-- 🔍 Find an available port (starts with 5000)
+- 🔍 Find an available port (starts with 5001)
 - 🚀 Launch the application
 - 🧪 Run tests to verify everything works
 
@@ -78,7 +78,7 @@ The `run.py` script will automatically:
 
 4. **Open your browser** and navigate to:
    ```
-   http://localhost:5000
+   http://localhost:5001
    ```
 
 That's it! The chatbot is now running and ready to fact-check claims.
@@ -131,7 +131,7 @@ Available configuration options:
 # Flask configuration
 FLASK_ENV=development
 SECRET_KEY=your-secret-key-here
-PORT=5000
+PORT=5001
 
 # Cache configuration  
 CACHE_EXPIRY_HOURS=24
@@ -236,7 +236,7 @@ python app.py
 2. **Use a production WSGI server** (e.g., Gunicorn):
    ```bash
    pip install gunicorn
-   gunicorn -w 4 -b 0.0.0.0:5000 app:app
+   gunicorn -w 4 -b 0.0.0.0:5001 app:app
    ```
 
 3. **Set up reverse proxy** (nginx recommended)
@@ -255,7 +255,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY . .
-EXPOSE 5000
+EXPOSE 5001
 
 CMD ["python", "app.py"]
 ```
@@ -263,7 +263,7 @@ CMD ["python", "app.py"]
 Build and run:
 ```bash
 docker build -t factcheck-chatbot .
-docker run -p 5000:5000 factcheck-chatbot
+docker run -p 5001:5001 factcheck-chatbot
 ```
 
 ## 🔍 Troubleshooting

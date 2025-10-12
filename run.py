@@ -136,7 +136,7 @@ class FactCheckStarter:
         except OSError:
             return False
     
-    def find_free_port(self, start_port=5000):
+    def find_free_port(self, start_port=5001):
         """Find the first available port starting from start_port."""
         for port in range(start_port, start_port + 50):
             if self.check_port_available(port):
@@ -200,7 +200,7 @@ print("✅ System test passed")
             return False
         
         print("🔍 Finding available port...")
-        default_port = 5000
+        default_port = 5001
         
         # Try to free up the default port
         if not self.check_port_available(default_port):

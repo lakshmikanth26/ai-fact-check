@@ -12,7 +12,7 @@
    python start.py
    ```
 
-3. **Open your browser** to the displayed URL (usually `http://localhost:5000`)
+3. **Open your browser** to the displayed URL (usually `http://localhost:5001`)
 
 4. **Start fact-checking!** Type any claim like:
    - "The Earth is flat"
@@ -29,7 +29,7 @@ The `start.py` script automatically handles:
 - Installs dependencies only if not already present
 
 ### 🔍 Smart Port Management
-- Tries port 5000 first
+- Tries port 5001 first
 - If busy, automatically finds next available port
 - Displays the correct URL to open
 
@@ -51,7 +51,7 @@ The `start.py` script automatically handles:
 ✅ Virtual environment already exists
 ✅ Dependencies already installed
 ✅ All tests passed
-⚠️  Port 5000 is busy, finding alternative...
+⚠️  Port 5001 is busy, finding alternative...
 🌐 Starting application on port 5001
 🔗 Open your browser to: http://localhost:5001
 📝 Press Ctrl+C to stop the server
@@ -72,7 +72,7 @@ The `start.py` script automatically handles:
 
 **"Port already in use"**
 - The script automatically finds free ports
-- If all ports 5000-5050 are busy, close other applications
+- If all ports 5001-5050 are busy, close other applications
 
 **"Dependencies failed to install"**
 - Check internet connection

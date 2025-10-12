@@ -1,0 +1,36 @@
+{
+  "facts": [
+    {
+      "claim": "earth is flat",
+      "classification": "False",
+      "user_provided": true,
+      "confidence": 0.9,
+      "timestamp": "2025-10-12T20:44:21.784996",
+      "feedback_count": 1,
+      "positive_feedback": 1
+    },
+    {
+      "claim": "Narendra modi is PM of india",
+      "classification": "True",
+      "user_provided": true,
+      "confidence": 0.95,
+      "timestamp": "2025-10-12T20:44:43.354922",
+      "feedback_count": 2,
+      "positive_feedback": 1,
+      "last_updated": "2025-10-12T21:03:09.424840"
+    },
+    {
+      "claim": "Rahul gandhi is PM of india",
+      "classification": "False",
+      "user_provided": true,
+      "confidence": 0.95,
+      "timestamp": "2025-10-12T21:08:58.334649",
+      "feedback_count": 1,
+      "positive_feedback": 1
+    }
+  ],
+  "metadata": {
+    "created": "2025-10-12T20:22:04.327459",
+    "version": "1.0"
+  }
+}

@@ -19,10 +19,12 @@ load_dotenv()
 
 
 class FactChecker:
-    def __init__(self, cache_file: str = "cache.json"):
+    def __init__(self, cache_file: str = "cache.json", knowledge_base_file: str = "knowledge_base.json"):
         """Initialize the fact checker with caching capability."""
         self.cache_file = cache_file
         self.cache = self._load_cache()
+        self.knowledge_base_file = knowledge_base_file
+        self.knowledge_base = self._load_knowledge_base()
         self.wikipedia_search_url = "https://en.wikipedia.org/w/api.php"
         self.wikipedia_summary_url = "https://en.wikipedia.org/api/rest_v1/page/summary"
         self.huggingface_api_url = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
@@ -35,8 +37,8 @@ class FactChecker:
             if os.path.exists(self.cache_file):
                 with open(self.cache_file, 'r') as f:
                     return json.load(f)
-        except Exception as e:
-            print(f"Error loading cache: {e}")
+        except Exception:
+            print("Error loading cache")
         return {}
     
     def _save_cache(self):
@@ -46,6 +48,24 @@ class FactChecker:
                 json.dump(self.cache, f, indent=2)
         except Exception as e:
             print(f"Error saving cache: {e}")
+    
+    def _load_knowledge_base(self) -> Dict:
+        """Load knowledge base from JSON file."""
+        try:
+            if os.path.exists(self.knowledge_base_file):
+                with open(self.knowledge_base_file, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Error loading knowledge base: {e}")
+        return {"facts": [], "metadata": {"created": datetime.now().isoformat(), "version": "1.0"}}
+    
+    def _save_knowledge_base(self):
+        """Save knowledge base to JSON file."""
+        try:
+            with open(self.knowledge_base_file, 'w') as f:
+                json.dump(self.knowledge_base, f, indent=2)
+        except Exception as e:
+            print(f"Error saving knowledge base: {e}")
     
     def _get_cache_key(self, claim: str) -> str:
         """Generate a cache key for the claim."""
@@ -58,6 +78,103 @@ class FactChecker:
             return datetime.now() - cached_time < timedelta(hours=24)
         except:
             return False
+    
+    def _normalize_claim(self, claim: str) -> str:
+        """Normalize a claim for similarity matching."""
+        import re
+        # Convert to lowercase and remove extra whitespace
+        normalized = claim.lower().strip()
+        # Remove punctuation
+        normalized = re.sub(r'[^\w\s]', '', normalized)
+        # Normalize whitespace
+        normalized = re.sub(r'\s+', ' ', normalized)
+        return normalized
+    
+    def _calculate_similarity(self, claim1: str, claim2: str) -> float:
+        """Calculate similarity between two claims using word overlap."""
+        words1 = set(self._normalize_claim(claim1).split())
+        words2 = set(self._normalize_claim(claim2).split())
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        
+        # Jaccard similarity
+        return len(intersection) / len(union)
+    
+    def search_knowledge_base(self, claim: str, threshold: float = 0.7) -> Optional[Dict]:
+        """Search knowledge base for similar claims."""
+        best_match = None
+        best_similarity = 0.0
+        
+        for fact in self.knowledge_base.get("facts", []):
+            similarity = self._calculate_similarity(claim, fact.get("claim", ""))
+            
+            if similarity >= threshold and similarity > best_similarity:
+                best_similarity = similarity
+                best_match = fact
+        
+        if best_match:
+            print(f"Found knowledge base match with similarity: {best_similarity:.2f}")
+            return best_match
+        
+        return None
+    
+    def add_user_feedback(self, claim: str, is_correct: str, user_answer: str = None, confidence: float = 1.0) -> None:
+        """Add user feedback to the knowledge base."""
+        fact_entry = {
+            "claim": claim,
+            "classification": is_correct,
+            "user_provided": True,
+            "confidence": confidence,
+            "timestamp": datetime.now().isoformat(),
+            "feedback_count": 1,
+            "positive_feedback": 1 if is_correct in ["True", "False"] else 0
+        }
+        
+        if user_answer:
+            fact_entry["explanation"] = user_answer
+            fact_entry["user_explanation"] = user_answer
+        
+        # Check if similar fact already exists
+        existing_fact = None
+        for i, fact in enumerate(self.knowledge_base.get("facts", [])):
+            if self._calculate_similarity(claim, fact.get("claim", "")) > 0.85:
+                existing_fact = i
+                break
+        
+        if existing_fact is not None:
+            # Update existing fact
+            old_fact = self.knowledge_base["facts"][existing_fact]
+            old_fact["feedback_count"] = old_fact.get("feedback_count", 1) + 1
+            if is_correct in ["True", "False"]:
+                old_fact["positive_feedback"] = old_fact.get("positive_feedback", 0) + 1
+            old_fact["last_updated"] = datetime.now().isoformat()
+            
+            # Update classification if confidence is higher
+            if confidence > old_fact.get("confidence", 0):
+                old_fact["classification"] = is_correct
+                old_fact["confidence"] = confidence
+                if user_answer:
+                    old_fact["explanation"] = user_answer
+                    old_fact["user_explanation"] = user_answer
+        else:
+            # Add new fact
+            if "facts" not in self.knowledge_base:
+                self.knowledge_base["facts"] = []
+            self.knowledge_base["facts"].append(fact_entry)
+        
+        self._save_knowledge_base()
+        
+        # Invalidate cache for this claim
+        cache_key = self._get_cache_key(claim)
+        if cache_key in self.cache:
+            del self.cache[cache_key]
+            self._save_cache()
+        
+        print(f"Added user feedback to knowledge base: {claim}")
     
     def search_wikipedia(self, query: str, limit: int = 3) -> List[Dict]:
         """Search Wikipedia for relevant articles."""
@@ -198,7 +315,7 @@ class FactChecker:
                         # Fetch page content
                         response = requests.get(url, headers=headers, timeout=8)
                         if response.status_code == 200:
-                            # Simple text extraction without BeautifulSoup for now
+                            # Simple text extraction
                             content = response.text
                             
                             # Extract title from HTML
@@ -223,8 +340,7 @@ class FactChecker:
                                     'source': 'Web Search'
                                 })
                                 
-                    except Exception as e:
-                        print(f"Error fetching {url}: {str(e)[:50]}...")
+                    except Exception:
                         continue
                         
             except Exception as e:
@@ -570,12 +686,38 @@ class FactChecker:
     
     def fact_check(self, claim: str) -> Dict:
         """Main fact-checking function."""
-        # Check cache first
+        # 1. FIRST check knowledge base (highest priority)
+        kb_match = self.search_knowledge_base(claim)
+        if kb_match:
+            result = {
+                "claim": claim,
+                "classification": kb_match.get("classification", "True"),
+                "confidence": kb_match.get("confidence", 0.9),
+                "explanation": kb_match.get("explanation", f"Based on previous user feedback, this claim is classified as {kb_match.get('classification', 'True')}."),
+                "sources": [{
+                    "title": "User Knowledge Base",
+                    "url": "#",
+                    "description": f"Learned from user feedback (confidence: {kb_match.get('feedback_count', 1)} feedback(s))"
+                }],
+                "context_summary": kb_match.get("explanation", "From knowledge base"),
+                "from_knowledge_base": True,
+                "needs_feedback": True,
+                "original_claim": claim
+            }
+            
+            # Don't cache knowledge base results - they should always be fresh
+            return result
+        
+        # 2. Check cache for non-KB results
         cache_key = self._get_cache_key(claim)
         if cache_key in self.cache and self._is_cache_valid(self.cache[cache_key]):
-            return self.cache[cache_key]['result']
+            cached_result = self.cache[cache_key]['result']
+            # Add suggestion prompt to cached results too
+            cached_result['needs_feedback'] = True
+            cached_result['original_claim'] = claim
+            return cached_result
         
-        # Get enhanced sources from both Wikipedia and Google
+        # 3. Then check Google and Wikipedia
         articles = self.get_enhanced_sources(claim)
         
         if not articles:
@@ -587,16 +729,22 @@ class FactChecker:
                     "confidence": 0.75,
                     "explanation": "No Wikipedia articles found for this institution, suggesting it may not be a recognized or established educational institution.",
                     "sources": [],
-                    "context_summary": "No context available."
+                    "context_summary": "No context available.",
+                    "needs_feedback": True,
+                    "needs_user_input": True,
+                    "original_claim": claim
                 }
             else:
                 result = {
                     "claim": claim,
                     "classification": "Unverifiable",
                     "confidence": 0.0,
-                    "explanation": "No relevant information found in Wikipedia to verify this claim.",
+                    "explanation": "No relevant information found in Wikipedia or Google to verify this claim. Please provide your answer if you know the correct information.",
                     "sources": [],
-                    "context_summary": "No context available."
+                    "context_summary": "No context available.",
+                    "needs_feedback": True,
+                    "needs_user_input": True,
+                    "original_claim": claim
                 }
         else:
             # Combine article extracts for context
@@ -621,7 +769,9 @@ class FactChecker:
                 "explanation": explanations[classification_result["classification"]],
                 "sources": [{"title": article["title"], "url": article["url"], "description": article["description"]} for article in articles],
                 "context_summary": context_summary,
-                "detailed_scores": classification_result["scores"]
+                "detailed_scores": classification_result["scores"],
+                "needs_feedback": True,
+                "original_claim": claim
             }
         
         # Cache the result
