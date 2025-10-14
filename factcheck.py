@@ -28,8 +28,8 @@ class FactChecker:
         self.wikipedia_search_url = "https://en.wikipedia.org/w/api.php"
         self.wikipedia_summary_url = "https://en.wikipedia.org/api/rest_v1/page/summary"
         self.huggingface_api_url = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
-        self.enable_google_search = os.getenv('ENABLE_GOOGLE_SEARCH', 'true').lower() == 'true'
-        self.google_search_results = int(os.getenv('GOOGLE_SEARCH_RESULTS', '3'))
+        self.enable_google_search = os.getenv('ENABLE_GOOGLE_SEARCH', 'false').lower() == 'true'
+        self.google_search_results = int(os.getenv('GOOGLE_SEARCH_RESULTS', '2'))
         
     def _load_cache(self) -> Dict:
         """Load cache from JSON file."""
@@ -92,6 +92,17 @@ class FactChecker:
     
     def _calculate_similarity(self, claim1: str, claim2: str) -> float:
         """Calculate similarity between two claims using word overlap."""
+        import re
+        
+        # Extract numbers from both claims
+        numbers1 = set(re.findall(r'\b\d+(?:\.\d+)?\b', claim1))
+        numbers2 = set(re.findall(r'\b\d+(?:\.\d+)?\b', claim2))
+        
+        # If both claims contain numbers and they're different, similarity should be very low
+        if numbers1 and numbers2 and numbers1 != numbers2:
+            # Numbers are different - claims are likely contradictory
+            return 0.0
+        
         words1 = set(self._normalize_claim(claim1).split())
         words2 = set(self._normalize_claim(claim2).split())
         
@@ -290,9 +301,9 @@ class FactChecker:
                 from googlesearch import search
                 import time
                 
-                # Get URLs with longer delay to avoid blocking
+                # Get URLs with shorter delay for faster response
                 urls = []
-                for url in search(query, num_results=limit, sleep_interval=2, timeout=15):
+                for url in search(query, num_results=limit, sleep_interval=1, timeout=10):
                     urls.append(url)
                     if len(urls) >= limit:
                         break
@@ -309,11 +320,11 @@ class FactChecker:
                         if any(domain in url.lower() for domain in skip_domains):
                             continue
                             
-                        # Add delay between requests
-                        time.sleep(1)
+                        # Shorter delay for faster response
+                        time.sleep(0.5)
                         
-                        # Fetch page content
-                        response = requests.get(url, headers=headers, timeout=8)
+                        # Fetch page content with shorter timeout
+                        response = requests.get(url, headers=headers, timeout=5)
                         if response.status_code == 200:
                             # Simple text extraction
                             content = response.text
@@ -358,16 +369,17 @@ class FactChecker:
         """Get sources from both Wikipedia and Google search."""
         all_sources = []
         
-        # Get Wikipedia sources
+        # Get Wikipedia sources (fast and reliable)
         search_terms = self.extract_search_terms(claim)
-        for query in search_terms[:3]:  # Limit Wikipedia searches
+        for query in search_terms[:2]:  # Limit Wikipedia searches to 2 for speed
             articles = self.search_wikipedia(query, limit=2)
             all_sources.extend(articles)
             if len(all_sources) >= 3:
                 break
         
-        # Add Google search results if enabled
-        if self.enable_google_search and len(all_sources) < 5:
+        # Only use Google if Wikipedia found nothing and it's explicitly enabled
+        if self.enable_google_search and len(all_sources) == 0:
+            print("⚠️ Wikipedia found nothing, trying Google (this may be slow)...")
             google_results = self.search_google(claim, limit=self.google_search_results)
             all_sources.extend(google_results)
         
